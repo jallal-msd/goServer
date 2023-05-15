@@ -1,6 +1,7 @@
 package main
 
 import (
+    "net/smtp"
 	"database/sql"
 	"fmt"
 	"log"
@@ -10,6 +11,120 @@ import (
 	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
 )
+
+type comments struct {
+
+    User string
+    Comment string
+    Rating int8 `json"rating, string"`
+}
+
+func storeComment(comment comments) (bool, error){
+    tx, err := DB.Begin()
+
+    stmnt, err := tx.Prepare("insert into comments values(?,?,?)")
+
+    checkErr(err)
+
+    defer stmnt.Close()
+
+    _, err = stmnt.Exec(&comment.User, &comment.Comment, &comment.Rating)
+
+    checkErr(err)
+
+    tx.Commit()
+
+    return true,nil
+}
+
+func postComments(c *gin.Context){
+
+    var comment comments
+
+    err := c.ShouldBindJSON(&comment)
+    checkErr(err)
+
+    succes, err := storeComment(comment)
+    checkErr(err)
+
+    if succes {
+        
+        c.JSON(http.StatusOK, gin.H{"message": "success"})
+    }else {
+        c.JSON(http.StatusBadRequest, gin.H{"error":"usuck"})
+    }
+}
+
+
+func savingComments() ([]comments, error){
+    
+    rows, err := DB.Query("select * from comments")
+    checkErr(err)
+    
+    commentt := make([]comments, 0)
+    for rows.Next(){
+        comment := comments{}
+        err = rows.Scan(&comment.User, &comment.Comment,
+                &comment.Rating)
+
+        if err != nil {
+            return nil,err
+
+        commentt = append(commentt, comment)
+    }
+
+    err = rows.Err()
+
+    if err != nil {
+        return nil, err
+    }
+}
+  return commentt, nil
+
+}
+
+func getComments(c *gin.Context){
+
+    rows, err := savingComments()
+    checkErr(err)
+    
+    if rows == nil {
+        
+        c.JSON(http.StatusBadRequest, gin.H{"error": "no rows"})
+    }else {
+        
+        c.JSON(http.StatusOK, gin.H{"data":rows})
+    }
+
+}
+
+func sendMail() {
+    
+    from := "gerard52@ethereal.email"
+    passowrd := "sPMU8YSF2wPJ8GKJCn"
+    
+    to := []string {"jallalblack@gmail.com" ,}
+
+
+    stmpHost :="smtp.ethereal.email"
+    stmpPort :="587"
+
+    message := []byte("this is a test message")
+
+    auth := smtp.PlainAuth("", from, passowrd, stmpHost)
+
+    err := smtp.SendMail(stmpHost+":"+stmpPort, auth, from, to, message)
+
+    if err != nil {
+        fmt.Println(err)
+        return
+    }
+
+    fmt.Println("Email sent")
+}
+
+
+
 
 var DB *sql.DB
 
@@ -136,6 +251,7 @@ func connect() {
     
 }
 func main() {
+    sendMail()
     hashing.Check()
     connect()
 
@@ -143,8 +259,9 @@ func main() {
    router.Use(cors.Default())
    
 
-   router.GET("/albums", getInfos)
-   router.POST("/albums", sendData) 
+   router.GET("/albums", getComments)
+   router.POST("/albums", postComments) 
    router.Run("localhost:8080")
 
 }
+
